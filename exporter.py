@@ -2,7 +2,6 @@ import requests
 import json
 import gzip
 from ftplib import FTP
-from datetime import datetime
 import argparse
 
 # Define the endpoint and query parameters
@@ -33,7 +32,9 @@ COLUMNS_TO_READ = [
 #     "model_type",
 #     "histology"
 # ]
-ENDPOINT = "https://dev.cancermodels.org/api/search_index"
+BASE_URL = "https://dev.cancermodels.org/api/"
+DATA_ENDPOINT = BASE_URL + "search_index"
+RELEASE_ENDPOINT = BASE_URL + "release_info"
 PARAMS = {
     "select": ",".join(COLUMNS_TO_READ),
     "limit": 100,  # Set a limit for pagination
@@ -58,7 +59,7 @@ def fetch_and_process_data():
     processed_data = []
     total_count = 0
     while True:
-        response = requests.get(ENDPOINT, params=PARAMS)
+        response = requests.get(DATA_ENDPOINT, params=PARAMS)
         response.raise_for_status()
         data = response.json()
 
@@ -77,6 +78,18 @@ def fetch_and_process_data():
 
     return processed_data, total_count
 
+# Fetch release information
+def fetch_release_info():
+    response = requests.get(RELEASE_ENDPOINT)
+    response.raise_for_status()
+    data = response.json()
+
+    if isinstance(data, list) and len(data) > 0:
+        release_info = data[0]
+        return release_info.get('name'), release_info.get('date')
+    else:
+        raise ValueError("Unexpected release info format")  
+
 # Function to upload the file to FTP
 def upload_to_ftp(filename, ftp_host, ftp_user, ftp_pass, ftp_folder):
     with FTP(ftp_host, ftp_user, ftp_pass) as ftp:
@@ -88,13 +101,14 @@ def upload_to_ftp(filename, ftp_host, ftp_user, ftp_pass, ftp_folder):
 # Main function
 def main(ftp_host, ftp_user, ftp_pass, ftp_folder):
     processed_data, total_count = fetch_and_process_data()
+    release_name, release_date = fetch_release_info()
 
     # Add metadata
     result = {
         "entry_count": total_count,
         "name": "CancerModels.Org",
-        "release": "v6.4",  # Hardcoded for now
-        "release_date": "18-07-2024",  # Hardcoded for now
+        "release": release_name,
+        "release_date": release_date,
         "entries": processed_data,
     }
 
@@ -111,7 +125,7 @@ def main(ftp_host, ftp_user, ftp_pass, ftp_folder):
     print(f"Processed {total_count} models and saved to {gz_filename}")
 
     # Upload the compressed file to FTP
-    upload_to_ftp(gz_filename, ftp_host, ftp_user, ftp_pass, ftp_folder)
+    # upload_to_ftp(gz_filename, ftp_host, ftp_user, ftp_pass, ftp_folder)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch, process, and upload cancer model data to an FTP server.")
